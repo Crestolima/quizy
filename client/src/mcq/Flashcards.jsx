@@ -14,7 +14,10 @@ const Flashcards = () => {
 
   useEffect(() => {
     axios.get('http://localhost:3001/courses')
-      .then(response => setCourses(response.data))
+      .then(response => {
+        // Extract courses array from response
+        setCourses(response.data.courses || []);
+      })
       .catch(error => console.error('Error fetching courses:', error));
   }, []);
 
@@ -45,6 +48,10 @@ const Flashcards = () => {
   };
 
   const getCorrectAnswers = () => {
+    if (!mcqs.length || !mcqs[currentQuestionIndex]) {
+      return "No answer available";
+    }
+
     const correctIndexes = mcqs[currentQuestionIndex].correctOptions;
     console.log("Correct indexes: ", correctIndexes); // Debug log for correctOptions
 

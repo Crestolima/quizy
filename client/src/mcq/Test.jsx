@@ -75,10 +75,12 @@ const Test = () => {
     const fetchCourses = async () => {
       try {
         const response = await axios.get('http://localhost:3001/courses');
-        setCourses(response.data);
+        // Extract courses array from the response
+        setCourses(response.data.courses || []);
         setLoading(false);
       } catch (error) {
         console.error('Error fetching courses:', error);
+        toast.error('Failed to fetch courses');
         setLoading(false);
       }
     };
@@ -91,9 +93,16 @@ const Test = () => {
       const fetchMCQs = async () => {
         try {
           const response = await axios.get(`http://localhost:3001/mcqs/course/${selectedCourse}`);
-          setMcqs(response.data);
+          if (Array.isArray(response.data)) {
+            setMcqs(response.data);
+          } else {
+            setMcqs([]);
+            toast.error('No MCQs available for this course');
+          }
         } catch (error) {
           console.error('Error fetching MCQs:', error);
+          toast.error('Failed to fetch MCQs');
+          setMcqs([]);
         }
       };
 
@@ -117,6 +126,7 @@ const Test = () => {
       setNumQuestions(value);
     } else {
       setNumQuestions(maxQuestions);
+      toast.info(`Maximum available questions: ${maxQuestions}`);
     }
   };
 
@@ -175,10 +185,7 @@ const Test = () => {
     setShowResults(true);
 
     const testData = {
-      user: {
-        firstName: loggedInUser.firstName,
-        lastName: loggedInUser.lastName
-      },
+      user: loggedInUser._id, // Send user ID instead of name
       course: selectedCourse,
       score: newScore,
       totalQuestions: parseInt(numQuestions, 10),
@@ -230,7 +237,7 @@ const Test = () => {
           </Grid>
         )}
       </Grid>
-      {selectedCourse && numQuestions && currentQuestionIndex < numQuestions && (
+      {selectedCourse && numQuestions && currentQuestionIndex < numQuestions && mcqs.length > 0 && (
         <StyledCard>
           <CardContent>
             <Typography variant="h6">
@@ -283,7 +290,7 @@ const Test = () => {
         </StyledCard>
       )}
       {showResults && (
-        <Alert severity="success" mt={4}>
+        <Alert severity="success" sx={{ mt: 4 }}>
           <Typography variant="h5">Test Results</Typography>
           <Typography variant="body1">
             You scored {score} out of {numQuestions}

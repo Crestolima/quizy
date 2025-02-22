@@ -13,12 +13,15 @@ import {
     FormLabel,
     FormControlLabel,
     Paper,
-    Checkbox
+    Checkbox,
+    CircularProgress,
+    Alert
 } from '@mui/material';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 function MCQForm() {
+    // State management
     const [course, setCourse] = useState('');
     const [question, setQuestion] = useState('');
     const [options, setOptions] = useState(['', '', '', '']);
@@ -29,6 +32,9 @@ function MCQForm() {
     const [editMode, setEditMode] = useState(false);
     const [mcqId, setMcqId] = useState('');
     const [showMCQs, setShowMCQs] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
         fetchCourses();
@@ -37,27 +43,46 @@ function MCQForm() {
 
     const fetchCourses = async () => {
         try {
+            setLoading(true);
+            setError(null);
             const response = await fetch('http://localhost:3001/courses');
+            if (!response.ok) {
+                throw new Error('Failed to fetch courses');
+            }
             const data = await response.json();
-            setCourses(data);
+            setCourses(data.courses || []);
         } catch (error) {
             console.error('Error fetching courses:', error);
+            setError('Failed to load courses');
+            setCourses([]);
+            toast.error('Failed to load courses');
+        } finally {
+            setLoading(false);
         }
     };
 
     const fetchMCQs = async () => {
         try {
             const response = await fetch('http://localhost:3001/mcqs/grouped');
+            if (!response.ok) {
+                throw new Error('Failed to fetch MCQs');
+            }
             const data = await response.json();
-            setMcqs(data);
+            setMcqs(data || []);
         } catch (error) {
             console.error('Error fetching MCQs:', error);
+            toast.error('Failed to load MCQs');
+            setMcqs([]);
         }
     };
 
     const fetchMCQDetails = async (id) => {
         try {
+            setLoading(true);
             const response = await fetch(`http://localhost:3001/mcqs/${id}`);
+            if (!response.ok) {
+                throw new Error('Failed to fetch MCQ details');
+            }
             const data = await response.json();
             setCourse(data.course);
             setQuestion(data.question);
@@ -68,6 +93,9 @@ function MCQForm() {
             setEditMode(true);
         } catch (error) {
             console.error('Error fetching MCQ details:', error);
+            toast.error('Failed to load MCQ details');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -91,30 +119,48 @@ function MCQForm() {
         }
     };
 
+    const validateForm = () => {
+        if (!course) {
+            toast.error('Please select a course');
+            return false;
+        }
+        if (!question.trim()) {
+            toast.error('Please enter a question');
+            return false;
+        }
+        if (options.some(option => !option.trim())) {
+            toast.error('Please fill in all options');
+            return false;
+        }
+        if (correctOptions.length === 0) {
+            toast.error('Please select at least one correct option');
+            return false;
+        }
+        return true;
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (correctOptions.length === 0) {
-            toast.error('Please select at least one correct option');
+        if (!validateForm()) {
             return;
         }
 
         const formData = {
-            course: course,
-            question: question,
-            options: options,
-            correctOptions: correctOptions,
-            isMultipleAnswer: isMultipleAnswer
+            course,
+            question,
+            options,
+            correctOptions,
+            isMultipleAnswer
         };
-
-        console.log('Form Data:', formData);
 
         const url = editMode ? `http://localhost:3001/mcqs/${mcqId}` : 'http://localhost:3001/mcqs';
         const method = editMode ? 'PUT' : 'POST';
 
         try {
+            setSubmitting(true);
             const response = await fetch(url, {
-                method: method,
+                method,
                 headers: {
                     'Content-Type': 'application/json'
                 },
@@ -125,26 +171,33 @@ function MCQForm() {
                 throw new Error('Failed to submit MCQ');
             }
 
-            const createdMCQ = await response.json();
-            console.log('Submitted MCQ:', createdMCQ);
-
-            setCourse('');
-            setQuestion('');
-            setOptions(['', '', '', '']);
-            setCorrectOptions([]);
-            setIsMultipleAnswer(false);
-            setEditMode(false);
-            setMcqId('');
-
-            toast.success('MCQ submitted successfully');
+            await response.json();
+            resetForm();
+            toast.success(`MCQ ${editMode ? 'updated' : 'created'} successfully`);
             fetchMCQs();
         } catch (error) {
             console.error('Error submitting MCQ:', error);
-            toast.error('Failed to submit MCQ');
+            toast.error(`Failed to ${editMode ? 'update' : 'create'} MCQ`);
+        } finally {
+            setSubmitting(false);
         }
     };
 
+    const resetForm = () => {
+        setCourse('');
+        setQuestion('');
+        setOptions(['', '', '', '']);
+        setCorrectOptions([]);
+        setIsMultipleAnswer(false);
+        setEditMode(false);
+        setMcqId('');
+    };
+
     const handleDelete = async (id) => {
+        if (!window.confirm('Are you sure you want to delete this MCQ?')) {
+            return;
+        }
+
         try {
             const response = await fetch(`http://localhost:3001/mcqs/${id}`, {
                 method: 'DELETE'
@@ -163,23 +216,64 @@ function MCQForm() {
     };
 
     const renderMCQs = () => {
+        if (mcqs.length === 0) {
+            return (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                    No MCQs found. Create your first MCQ!
+                </Alert>
+            );
+        }
+
         return mcqs.map((group) => (
             <Box key={group._id} mb={4}>
                 <Typography variant="h6">{group.courseDetails[0]?.name}</Typography>
                 {group.mcqs.map((mcq) => (
-                    <Box key={mcq._id} mt={2} mb={2} p={2} border={1} borderColor="grey.300" borderRadius={4}>
-                        <Typography>{mcq.question}</Typography>
-                        <Button variant="contained" color="primary" onClick={() => fetchMCQDetails(mcq._id)} sx={{ mr: 1 }}>
-                            Edit
-                        </Button>
-                        <Button variant="contained" color="secondary" onClick={() => handleDelete(mcq._id)}>
-                            Delete
-                        </Button>
-                    </Box>
+                    <Paper key={mcq._id} sx={{ mt: 2, mb: 2, p: 2 }}>
+                        <Typography variant="body1" gutterBottom>
+                            {mcq.question}
+                        </Typography>
+                        <Grid container spacing={2}>
+                            {mcq.options.map((option, index) => (
+                                <Grid item xs={12} sm={6} key={index}>
+                                    <Typography
+                                        variant="body2"
+                                        color={mcq.correctOptions.includes(index) ? "success.main" : "text.primary"}
+                                    >
+                                        {index + 1}. {option}
+                                    </Typography>
+                                </Grid>
+                            ))}
+                        </Grid>
+                        <Box sx={{ mt: 2 }}>
+                            <Button
+                                variant="contained"
+                                color="primary"
+                                onClick={() => fetchMCQDetails(mcq._id)}
+                                sx={{ mr: 1 }}
+                            >
+                                Edit
+                            </Button>
+                            <Button
+                                variant="contained"
+                                color="error"
+                                onClick={() => handleDelete(mcq._id)}
+                            >
+                                Delete
+                            </Button>
+                        </Box>
+                    </Paper>
                 ))}
             </Box>
         ));
     };
+
+    if (loading && !showMCQs) {
+        return (
+            <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+                <CircularProgress />
+            </Box>
+        );
+    }
 
     return (
         <Container maxWidth="lg">
@@ -190,6 +284,12 @@ function MCQForm() {
                     label="Show MCQs"
                 />
             </Box>
+
+            {error && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                    {error}
+                </Alert>
+            )}
 
             {showMCQs ? (
                 <Paper elevation={3} sx={{ padding: 2 }}>
@@ -205,20 +305,26 @@ function MCQForm() {
                             margin="normal"
                             value={course}
                             onChange={(e) => setCourse(e.target.value)}
+                            disabled={loading || submitting}
+                            error={!course && error}
                         >
-                            {courses.map((course, index) => (
-                                <MenuItem key={index} value={course._id}>
+                            {courses.map((course) => (
+                                <MenuItem key={course._id} value={course._id}>
                                     {course.name}
                                 </MenuItem>
                             ))}
                         </TextField>
+
                         <TextField
                             label="Question"
                             fullWidth
                             margin="normal"
                             value={question}
                             onChange={(e) => setQuestion(e.target.value)}
+                            disabled={submitting}
+                            error={!question.trim() && error}
                         />
+
                         <Grid container spacing={2}>
                             {options.map((option, index) => (
                                 <Grid item xs={12} sm={6} key={index}>
@@ -228,20 +334,25 @@ function MCQForm() {
                                         margin="normal"
                                         value={option}
                                         onChange={(e) => handleOptionChange(index, e.target.value)}
+                                        disabled={submitting}
+                                        error={!option.trim() && error}
                                     />
                                 </Grid>
                             ))}
                         </Grid>
+
                         <FormControlLabel
                             control={
                                 <Switch
                                     checked={isMultipleAnswer}
                                     onChange={(e) => setIsMultipleAnswer(e.target.checked)}
+                                    disabled={submitting}
                                 />
                             }
                             label="Multiple Correct Answers"
                         />
-                        <FormControl component="fieldset" margin="normal">
+
+                        <FormControl component="fieldset" margin="normal" error={correctOptions.length === 0 && error}>
                             <FormLabel component="legend">Correct Options</FormLabel>
                             <FormGroup row>
                                 {options.map((option, index) => (
@@ -251,6 +362,7 @@ function MCQForm() {
                                                 checked={correctOptions.includes(index)}
                                                 onChange={() => handleCorrectOptionChange(index)}
                                                 name={`option${index}`}
+                                                disabled={submitting}
                                             />
                                         }
                                         label={`Option ${index + 1}`}
@@ -259,15 +371,26 @@ function MCQForm() {
                                 ))}
                             </FormGroup>
                         </FormControl>
+
                         <Box mt={2}>
-                            <Button type="submit" variant="contained" color="primary" fullWidth>
-                                Submit
+                            <Button
+                                type="submit"
+                                variant="contained"
+                                color="primary"
+                                fullWidth
+                                disabled={submitting}
+                            >
+                                {submitting ? (
+                                    <CircularProgress size={24} color="inherit" />
+                                ) : (
+                                    editMode ? 'Update MCQ' : 'Create MCQ'
+                                )}
                             </Button>
                         </Box>
                     </form>
                 </Paper>
             )}
-            <ToastContainer />
+            <ToastContainer position="bottom-right" />
         </Container>
     );
 }
